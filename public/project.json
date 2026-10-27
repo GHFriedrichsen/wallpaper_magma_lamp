@@ -1,0 +1,430 @@
+{
+  "title": "Lâmpada de Magma",
+  "description": "Lâmpada de lava com cimática em fluidos: as bolhas de cera sobem e descem com o calor, vibram como gotas estrela a cada nota e o líquido forma ondas de Faraday. Cores, formato, bolhas, cimática, áudio e mouse personalizáveis.",
+  "type": "web",
+  "file": "index.html",
+  "preview": "preview.jpg",
+  "contentrating": "Everyone",
+  "tags": [
+    "Abstract"
+  ],
+  "general": {
+    "supportsaudioprocessing": true,
+    "properties": {
+      "schemecolor": {
+        "order": 0,
+        "text": "ui_browse_properties_scheme_color",
+        "type": "color",
+        "value": "1 0.35 0.05"
+      },
+      "h_colors": {
+        "order": 10,
+        "text": "<b>Cores</b>",
+        "type": "text"
+      },
+      "colorscheme": {
+        "order": 20,
+        "text": "Esquema de cores",
+        "type": "combo",
+        "value": "classic",
+        "options": [
+          {
+            "label": "Clássica (laranja no roxo)",
+            "value": "classic"
+          },
+          {
+            "label": "Magma (vermelho no preto)",
+            "value": "magma"
+          },
+          {
+            "label": "Oceano",
+            "value": "ocean"
+          },
+          {
+            "label": "Neon",
+            "value": "neon"
+          },
+          {
+            "label": "Pôr do sol",
+            "value": "sunset"
+          },
+          {
+            "label": "Ácido",
+            "value": "acid"
+          },
+          {
+            "label": "Lavanda",
+            "value": "lavender"
+          },
+          {
+            "label": "Mercúrio",
+            "value": "mercury"
+          },
+          {
+            "label": "Cores da música (capa)",
+            "value": "music"
+          },
+          {
+            "label": "Personalizado",
+            "value": "custom"
+          }
+        ]
+      },
+      "waxcolor": {
+        "order": 30,
+        "text": "Cera",
+        "condition": "colorscheme.value == 'custom'",
+        "type": "color",
+        "value": "1 0.3 0.04"
+      },
+      "waxhot": {
+        "order": 40,
+        "text": "Cera quente (núcleo)",
+        "condition": "colorscheme.value == 'custom'",
+        "type": "color",
+        "value": "1 0.75 0.25"
+      },
+      "liquidtop": {
+        "order": 50,
+        "text": "Líquido em cima",
+        "condition": "colorscheme.value == 'custom'",
+        "type": "color",
+        "value": "0.06 0.01 0.1"
+      },
+      "liquidbottom": {
+        "order": 60,
+        "text": "Líquido embaixo",
+        "condition": "colorscheme.value == 'custom'",
+        "type": "color",
+        "value": "0.3 0.03 0.2"
+      },
+      "glowcolor": {
+        "order": 70,
+        "text": "Brilho em volta da cera",
+        "condition": "colorscheme.value == 'custom'",
+        "type": "color",
+        "value": "1 0.3 0.1"
+      },
+      "huecycle": {
+        "order": 80,
+        "text": "Arco-íris (velocidade, 0 desliga)",
+        "type": "slider",
+        "value": 0,
+        "min": 0,
+        "max": 100,
+        "fraction": false,
+        "editable": true
+      },
+      "h_lamp": {
+        "order": 90,
+        "text": "<b>Lâmpada</b>",
+        "type": "text"
+      },
+      "shape": {
+        "order": 100,
+        "text": "Formato",
+        "type": "combo",
+        "value": "full",
+        "options": [
+          {
+            "label": "Tela cheia",
+            "value": "full"
+          },
+          {
+            "label": "Lâmpada de vidro",
+            "value": "lamp"
+          }
+        ]
+      },
+      "lampmetal": {
+        "order": 110,
+        "text": "Metal da lâmpada",
+        "condition": "shape.value == 'lamp'",
+        "type": "color",
+        "value": "0.55 0.5 0.48"
+      },
+      "backdrop": {
+        "order": 120,
+        "text": "Fundo atrás da lâmpada",
+        "condition": "shape.value == 'lamp'",
+        "type": "color",
+        "value": "0.03 0.02 0.04"
+      },
+      "blobcount": {
+        "order": 130,
+        "text": "Quantidade de bolhas",
+        "type": "slider",
+        "value": 9,
+        "min": 3,
+        "max": 20,
+        "fraction": false,
+        "editable": true
+      },
+      "blobsize": {
+        "order": 140,
+        "text": "Tamanho das bolhas (%)",
+        "type": "slider",
+        "value": 100,
+        "min": 50,
+        "max": 200,
+        "fraction": false,
+        "editable": true
+      },
+      "speed": {
+        "order": 150,
+        "text": "Velocidade (%)",
+        "type": "slider",
+        "value": 100,
+        "min": 0,
+        "max": 300,
+        "fraction": false,
+        "editable": true
+      },
+      "goo": {
+        "order": 160,
+        "text": "Fusão entre bolhas (%)",
+        "type": "slider",
+        "value": 50,
+        "min": 0,
+        "max": 100,
+        "fraction": false,
+        "editable": true
+      },
+      "pool": {
+        "order": 170,
+        "text": "Poça de cera no fundo",
+        "type": "bool",
+        "value": true
+      },
+      "h_cymatics": {
+        "order": 180,
+        "text": "<b>Cimática</b>",
+        "type": "text"
+      },
+      "cymatics": {
+        "order": 190,
+        "text": "Cimática",
+        "type": "combo",
+        "value": "both",
+        "options": [
+          {
+            "label": "Gotas estrela + ondas de Faraday",
+            "value": "both"
+          },
+          {
+            "label": "Só gotas estrela (bolhas vibram)",
+            "value": "star"
+          },
+          {
+            "label": "Só ondas de Faraday (líquido vibra)",
+            "value": "faraday"
+          },
+          {
+            "label": "Desligada",
+            "value": "off"
+          }
+        ]
+      },
+      "cymaticsstrength": {
+        "order": 200,
+        "text": "Força da cimática (%)",
+        "condition": "cymatics.value != 'off'",
+        "type": "slider",
+        "value": 100,
+        "min": 0,
+        "max": 300,
+        "fraction": false,
+        "editable": true
+      },
+      "wavescale": {
+        "order": 210,
+        "text": "Tamanho das ondas (%)",
+        "condition": "cymatics.value != 'off'",
+        "type": "slider",
+        "value": 100,
+        "min": 25,
+        "max": 300,
+        "fraction": false,
+        "editable": true
+      },
+      "vibrationspeed": {
+        "order": 220,
+        "text": "Velocidade da vibração (%)",
+        "condition": "cymatics.value != 'off'",
+        "type": "slider",
+        "value": 100,
+        "min": 0,
+        "max": 300,
+        "fraction": false,
+        "editable": true
+      },
+      "h_audio": {
+        "order": 230,
+        "text": "<b>Áudio</b>",
+        "type": "text"
+      },
+      "audioreact": {
+        "order": 240,
+        "text": "Reação ao áudio (%)",
+        "type": "slider",
+        "value": 100,
+        "min": 0,
+        "max": 300,
+        "fraction": false,
+        "editable": true
+      },
+      "bassheat": {
+        "order": 250,
+        "text": "Graves aquecem a cera (%)",
+        "type": "slider",
+        "value": 100,
+        "min": 0,
+        "max": 300,
+        "fraction": false,
+        "editable": true
+      },
+      "beatbounce": {
+        "order": 260,
+        "text": "Batidas sacodem a cera (%)",
+        "type": "slider",
+        "value": 100,
+        "min": 0,
+        "max": 300,
+        "fraction": false,
+        "editable": true
+      },
+      "h_look": {
+        "order": 270,
+        "text": "<b>Aparência</b>",
+        "type": "text"
+      },
+      "glow": {
+        "order": 280,
+        "text": "Brilho (%)",
+        "type": "slider",
+        "value": 100,
+        "min": 0,
+        "max": 200,
+        "fraction": false,
+        "editable": true
+      },
+      "shine": {
+        "order": 290,
+        "text": "Reflexo na cera (%)",
+        "type": "slider",
+        "value": 100,
+        "min": 0,
+        "max": 200,
+        "fraction": false,
+        "editable": true
+      },
+      "refraction": {
+        "order": 300,
+        "text": "Refração das ondas (%)",
+        "type": "slider",
+        "value": 100,
+        "min": 0,
+        "max": 200,
+        "fraction": false,
+        "editable": true
+      },
+      "brightness": {
+        "order": 310,
+        "text": "Luminosidade (%)",
+        "type": "slider",
+        "value": 100,
+        "min": 50,
+        "max": 150,
+        "fraction": false,
+        "editable": true
+      },
+      "vignette": {
+        "order": 320,
+        "text": "Vinheta (%)",
+        "type": "slider",
+        "value": 40,
+        "min": 0,
+        "max": 100,
+        "fraction": false,
+        "editable": true
+      },
+      "grain": {
+        "order": 330,
+        "text": "Granulado de filme (%)",
+        "type": "slider",
+        "value": 10,
+        "min": 0,
+        "max": 100,
+        "fraction": false,
+        "editable": true
+      },
+      "quality": {
+        "order": 340,
+        "text": "Resolução (%)",
+        "type": "slider",
+        "value": 100,
+        "min": 40,
+        "max": 100,
+        "fraction": false,
+        "editable": true
+      },
+      "h_mouse": {
+        "order": 350,
+        "text": "<b>Mouse</b>",
+        "type": "text"
+      },
+      "mousemode": {
+        "order": 360,
+        "text": "Mouse",
+        "type": "combo",
+        "value": "push",
+        "options": [
+          {
+            "label": "Empurra a cera",
+            "value": "push"
+          },
+          {
+            "label": "Aquece a cera",
+            "value": "heat"
+          },
+          {
+            "label": "Faz ondas no líquido",
+            "value": "ripple"
+          },
+          {
+            "label": "Desligado",
+            "value": "off"
+          }
+        ]
+      },
+      "mousestrength": {
+        "order": 370,
+        "text": "Força do mouse (%)",
+        "condition": "mousemode.value != 'off'",
+        "type": "slider",
+        "value": 100,
+        "min": 0,
+        "max": 300,
+        "fraction": false,
+        "editable": true
+      },
+      "mouseradius": {
+        "order": 380,
+        "text": "Alcance do mouse",
+        "condition": "mousemode.value != 'off'",
+        "type": "slider",
+        "value": 15,
+        "min": 5,
+        "max": 40,
+        "fraction": false,
+        "editable": true
+      },
+      "clickripples": {
+        "order": 390,
+        "text": "Clique faz onda",
+        "type": "bool",
+        "value": true
+      }
+    }
+  }
+}
