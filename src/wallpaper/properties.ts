@@ -17,10 +17,17 @@ export interface Settings {
   lightspeed: number;
   lightpulse: number;
   backgroundglow: number;
-  shape: 'puddle' | 'sphere';
+  shape: 'puddle' | 'sphere' | 'geodesic';
   spheremotion: 'spin' | 'mouse' | 'both' | 'still';
   spherespin: number;
   fluidcolor: RGB;
+  geocolor: RGB;
+  metallic: number;
+  holesize: number;
+  strut: number;
+  idleholes: number;
+  drops: number;
+  dropheight: number;
   mirror: number;
   size: number;
   spikeheight: number;

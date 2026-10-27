@@ -27,7 +27,9 @@ export type PropertyDef =
     };
 
 const CUSTOM = "colorscheme.value == 'custom'";
-const SPHERE = "shape.value == 'sphere'";
+const SPHERE = "shape.value != 'puddle'";
+const GEO = "shape.value == 'geodesic'";
+const FERRO = "shape.value != 'geodesic'";
 const TITLE = "titlemode.value != 'off'";
 const TITLE_CUSTOM = "titlemode.value == 'custom'";
 const MOUSE = 'mouse.value == true';
@@ -72,8 +74,9 @@ export const SCHEMA: PropertyDef[] = [
     text: 'Formato',
     value: 'puddle',
     options: [
-      { label: 'Poça (plana)', value: 'puddle' },
-      { label: 'Esfera', value: 'sphere' },
+      { label: 'Ferrofluido: poça (plana)', value: 'puddle' },
+      { label: 'Ferrofluido: esfera', value: 'sphere' },
+      { label: 'Esfera geodésica de fluido denso', value: 'geodesic' },
     ],
   },
   {
@@ -90,20 +93,28 @@ export const SCHEMA: PropertyDef[] = [
     condition: SPHERE,
   },
   { key: 'spherespin', type: 'slider', text: 'Velocidade do giro da esfera', value: 25, min: 0, max: 100, condition: SPHERE },
-  { key: 'fluidcolor', type: 'color', text: 'Cor do fluido', value: '0.02 0.02 0.025' },
+  { key: 'fluidcolor', type: 'color', text: 'Cor do ferrofluido', value: '0.02 0.02 0.025', condition: FERRO },
+  { key: 'geocolor', type: 'color', text: 'Cor do fluido denso', value: '0.75 0.04 0.05', condition: GEO },
+  { key: 'metallic', type: 'slider', text: 'Metálico (%)', value: 25, min: 0, max: 100, condition: GEO },
+  { key: 'holesize', type: 'slider', text: 'Tamanho dos buracos (%)', value: 100, min: 0, max: 150, condition: GEO },
+  { key: 'strut', type: 'slider', text: 'Espessura da trama (%)', value: 100, min: 30, max: 250, condition: GEO },
+  { key: 'idleholes', type: 'slider', text: 'Buracos em silêncio (%)', value: 0, min: 0, max: 100, condition: GEO },
+  { key: 'drops', type: 'slider', text: 'Gotas (%)', value: 100, min: 0, max: 300, condition: GEO },
+  { key: 'dropheight', type: 'slider', text: 'Altura das gotas (%)', value: 100, min: 20, max: 300, condition: GEO },
   { key: 'mirror', type: 'slider', text: 'Espelhamento do fluido (%)', value: 100, min: 0, max: 200 },
   { key: 'size', type: 'slider', text: 'Tamanho do fluido (%)', value: 100, min: 50, max: 150 },
-  { key: 'spikeheight', type: 'slider', text: 'Altura dos espinhos (%)', value: 100, min: 0, max: 200 },
-  { key: 'sharpness', type: 'slider', text: 'Pontas afiadas (%)', value: 50, min: 0, max: 100 },
-  { key: 'density', type: 'slider', text: 'Densidade dos espinhos (%)', value: 100, min: 50, max: 200 },
-  { key: 'idlefield', type: 'slider', text: 'Ímã em silêncio (%)', value: 30, min: 0, max: 100 },
-  { key: 'spin', type: 'slider', text: 'Giro da figura', value: 15, min: 0, max: 100 },
+  { key: 'spikeheight', type: 'slider', text: 'Altura dos espinhos (%)', value: 100, min: 0, max: 200, condition: FERRO },
+  { key: 'sharpness', type: 'slider', text: 'Pontas afiadas (%)', value: 50, min: 0, max: 100, condition: FERRO },
+  { key: 'density', type: 'slider', text: 'Densidade (espinhos ou células) (%)', value: 100, min: 50, max: 200 },
+  { key: 'idlefield', type: 'slider', text: 'Ímã em silêncio (%)', value: 30, min: 0, max: 100, condition: FERRO },
+  { key: 'spin', type: 'slider', text: 'Giro da figura', value: 15, min: 0, max: 100, condition: FERRO },
 
   { key: 'h_cymatics', type: 'header', text: '<b>Cimática</b>' },
   {
     key: 'cymatics',
     type: 'combo',
     text: 'Figura dos espinhos',
+    condition: FERRO,
     value: 'notes',
     options: [
       { label: 'Muda com as notas', value: 'notes' },
@@ -111,7 +122,7 @@ export const SCHEMA: PropertyDef[] = [
       { label: 'Sempre mandala', value: 'mandala' },
     ],
   },
-  { key: 'changespeed', type: 'slider', text: 'Velocidade da troca de figura (%)', value: 100, min: 10, max: 300 },
+  { key: 'changespeed', type: 'slider', text: 'Velocidade da troca de figura (%)', value: 100, min: 10, max: 300, condition: FERRO },
 
   { key: 'h_camera', type: 'header', text: '<b>Câmera</b>' },
   { key: 'camangle', type: 'slider', text: 'Ângulo da câmera (90 = de cima)', value: 62, min: 15, max: 90 },
@@ -165,9 +176,9 @@ export const SCHEMA: PropertyDef[] = [
 
   { key: 'h_audio', type: 'header', text: '<b>Áudio</b>' },
   { key: 'audioreact', type: 'slider', text: 'Reação ao áudio (%)', value: 100, min: 0, max: 300 },
-  { key: 'bassfield', type: 'slider', text: 'Graves fortalecem o ímã (%)', value: 100, min: 0, max: 300 },
-  { key: 'beatjump', type: 'slider', text: 'Batidas fazem os espinhos pularem (%)', value: 100, min: 0, max: 300 },
-  { key: 'trebleshimmer', type: 'slider', text: 'Agudos fazem as pontas tremerem (%)', value: 100, min: 0, max: 300 },
+  { key: 'bassfield', type: 'slider', text: 'Graves fortalecem o ímã ou incham a esfera (%)', value: 100, min: 0, max: 300 },
+  { key: 'beatjump', type: 'slider', text: 'Batidas fazem pular e soltar gotas (%)', value: 100, min: 0, max: 300 },
+  { key: 'trebleshimmer', type: 'slider', text: 'Agudos fazem as pontas tremerem (%)', value: 100, min: 0, max: 300, condition: FERRO },
 
   { key: 'h_look', type: 'header', text: '<b>Aparência</b>' },
   { key: 'brightness', type: 'slider', text: 'Luminosidade (%)', value: 100, min: 50, max: 150 },

@@ -1,9 +1,17 @@
 # Ferrofluido
 
-Wallpaper web para o Wallpaper Engine: um ferrofluido (líquido magnético,
-preto e espelhado) no centro da tela, em que o som vira **cimática**. A música
-é o campo magnético: os graves levantam os espinhos e cada nota arruma os
-espinhos numa figura. O nome da música aparece em volta da tela.
+Wallpaper web para o Wallpaper Engine: um fluido no centro da tela em que o
+som vira **cimática**, com o nome da música em volta da tela. Dois materiais:
+
+- **Ferrofluido** (poça ou esfera): líquido magnético, preto e espelhado. A
+  música é o campo magnético: os graves levantam os espinhos e cada nota
+  arruma os espinhos numa figura.
+- **Esfera geodésica de fluido denso**: uma casca de fluido colorido. Sem som
+  ela fica lisa; com som, cada nota faz a esfera vibrar e as células da trama
+  geodésica abrem buracos nos ventres, desenhando a figura da nota. Dos
+  buracos saem gotas que sobem e voltam para a esfera.
+
+## Ferrofluido
 
 | Som | O que o ferrofluido faz |
 |---|---|
@@ -19,11 +27,30 @@ baixos.
 
 ## Formatos
 
-- **Poça**: uma poça redonda e baixa sobre um chão escuro. O ímã fica embaixo
-  e pode seguir o mouse; a poça vai atrás, mais devagar.
-- **Esfera**: o ferrofluido envolve um ímã esférico e os espinhos saem para
-  todos os lados. A esfera pode **girar em torno de si**, **seguir o mouse**
-  (rolando enquanto anda), fazer **as duas coisas** ou ficar **parada**.
+- **Ferrofluido: poça**: uma poça redonda e baixa sobre um chão escuro. O ímã
+  fica embaixo e pode seguir o mouse; a poça vai atrás, mais devagar.
+- **Ferrofluido: esfera**: o ferrofluido envolve um ímã esférico e os
+  espinhos saem para todos os lados.
+- **Esfera geodésica de fluido denso**: veja abaixo.
+
+As duas esferas podem **girar em torno de si**, **seguir o mouse** (rolando
+enquanto anda), fazer **as duas coisas** ou ficar **paradas**.
+
+## Esfera geodésica de fluido denso
+
+| Som | O que a esfera faz |
+|---|---|
+| **Silêncio** | fica lisa e fechada (ou com os buracos de **Buracos em silêncio**) |
+| **Notas** | cada nota faz a esfera vibrar num modo próprio (harmônico esférico, como no Grãos): nos ventres as células abrem buracos, nas linhas nodais o fluido fica fechado. Nota grave = poucas linhas; aguda = muitas. Acordes misturam até 3 figuras |
+| **Volume** | quanto mais alto, mais os buracos abrem |
+| **Graves** | a esfera incha |
+| **Batidas** | a esfera pula e solta gotas |
+
+As gotas saem dos buracos mais abertos, sobem, perdem velocidade e caem de
+volta, se fundindo com a casca como fluido. Com **Buracos em silêncio** em
+100% a esfera fica sempre aberta, como uma esfera geodésica impressa em 3D.
+Cor, quanto é metálica, tamanho dos buracos, espessura da trama, quantidade e
+altura das gotas ficam no painel.
 
 ## Instalar no Wallpaper Engine
 
@@ -67,7 +94,7 @@ Todas as opções ficam em `src/wallpaper/schema.ts`. O `npm run build` gera o
 |---|---|
 | Cores | Esquema (Personalizado, Aurora, Fogo, Gelo, Ouro, Neon, Estúdio, Cores da música); no Personalizado, a cor de cada uma das 3 luzes e do fundo; Arco-íris |
 | Luzes | Intensidade de cada luz, altura, velocidade do giro, pulso com a música, brilho das luzes no fundo |
-| Ferrofluido | Formato (poça ou esfera), movimento e giro da esfera, cor do fluido, espelhamento, tamanho, altura e ponta dos espinhos, densidade, ímã em silêncio, giro da figura |
+| Fluido | Formato (ferrofluido poça, ferrofluido esfera, esfera geodésica), movimento e giro da esfera, espelhamento, tamanho, densidade; no ferrofluido: cor, altura e ponta dos espinhos, ímã em silêncio, giro da figura; na geodésica: cor, metálico, tamanho dos buracos, espessura da trama, buracos em silêncio, gotas, altura das gotas |
 | Cimática | Figura (muda com as notas, sempre favo, sempre mandala), velocidade da troca |
 | Câmera | Ângulo (90 = de cima), zoom, órbita lenta |
 | Nome da música | Onde mostrar: em volta toda (8 lugares), 4 cantos, em cima e embaixo, só embaixo, só em cima, escolher cada posição ou desligado; artista, fonte, tamanho, cor, opacidade, maiúsculas, pulso com os graves |
@@ -108,6 +135,21 @@ com muitos, baixos. Nunca passam de 1,6 vez a distância entre eles.
 - A esfera que segue o mouse vai por uma mola com amortecimento e rola na
   direção em que anda.
 
+### Esfera geodésica (`src/geo/`)
+
+- `harmonics.ts`: 36 modos Y(l, m) de l = 2 a 11, com o mesmo ataque e
+  soltura do ferrofluido e os 3 mais fortes somados.
+- `geodesic.ts`: as células são pontos em anéis de latitude (cada anel com
+  quantas cabem). A vibração de cada modo é calculada uma vez no centro de
+  cada célula e normalizada; a cada quadro a abertura da célula segue a soma
+  dos modos ativos e vai para o shader numa textura (linha = anel, coluna =
+  célula). As gotas são balísticas, puxadas para o centro da esfera.
+- No shader, a casca é `|d − R| − espessura`. A borda de cada célula é o
+  mínimo suave das distâncias até os planos entre o ponto da célula e os
+  vizinhos, o que arredonda os cantos dos buracos; tudo a mais de "meia trama"
+  da borda vira buraco, na proporção da abertura. As gotas entram por união
+  suave. Longe da casca as células nem são calculadas.
+
 ### Desenho (`src/render/shader.ts`)
 
 - **Poça**: campo de alturas percorrido por raymarching. Cada pixel lança um
@@ -136,6 +178,8 @@ src/ferro/ferro.ts           movimento: espinhos, ímã, esfera, ondas
 src/ferro/camera.ts          câmera e mouse → mundo
 src/ferro/palette.ts         esquemas de cores das luzes
 src/ferro/math3.ts           vetores e matrizes 3×3
+src/geo/harmonics.ts         notas → harmônicos esféricos
+src/geo/geodesic.ts          células da esfera geodésica e gotas
 src/overlay/title.ts         nome da música em volta da tela
 src/render/shader.ts         shader (GLSL)
 src/render/renderer.ts       WebGL2
@@ -146,7 +190,8 @@ scripts/project.ts           gera public/project.json
 ## Falta testar no Wallpaper Engine
 
 - [ ] o desempenho com placa de vídeo de verdade (o teste foi num navegador
-      sem GPU); se pesar, baixar **Qualidade** ou **Resolução**
+      sem GPU); se pesar, baixar **Qualidade** ou **Resolução**. A esfera
+      geodésica toda aberta é o modo mais pesado
 - [ ] o nome da música e as cores da capa chegam do Spotify/navegador
 - [ ] as condições do painel (`mouse.value == true`) e os títulos de seção
       (`type: text`) aparecem certo

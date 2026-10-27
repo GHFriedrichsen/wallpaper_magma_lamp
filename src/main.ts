@@ -11,8 +11,10 @@ import {
   type RGB,
 } from './ferro/palette';
 import { HEX, Patterns, type Pattern } from './ferro/patterns';
+import { CELL_TEX, Geodesic, TWIST } from './geo/geodesic';
+import { Harmonics } from './geo/harmonics';
 import { TitleOverlay } from './overlay/title';
-import { Renderer, type Frame } from './render/renderer';
+import { MAX_DROPS, Renderer, type Frame } from './render/renderer';
 import { AudioAnalyzer, silentLevels } from './wallpaper/audio';
 import { startDemo } from './wallpaper/demo';
 import { listenToMedia, type Song } from './wallpaper/media';
@@ -41,6 +43,7 @@ try {
 
 const analyzer = new AudioAnalyzer();
 const patterns = new Patterns();
+const harmonics = new Harmonics();
 /** Níveis da última leitura, já multiplicados pela Reação ao áudio. */
 const target = silentLevels();
 /** Níveis suavizados a cada quadro: sobem rápido e descem devagar. */
@@ -55,7 +58,9 @@ function onSpectrum(spectrum: ArrayLike<number>): void {
   target.treble = levels.treble * k;
   target.energy = levels.energy * k;
   pendingBeat = Math.max(pendingBeat, Math.min(1.5, levels.beat * k));
-  patterns.hear(levels.notes.map((n) => ({ band: n.band, strength: Math.min(1, n.strength * k) })));
+  const notes = levels.notes.map((n) => ({ band: n.band, strength: Math.min(1, n.strength * k) }));
+  patterns.hear(notes);
+  harmonics.hear(notes, Math.min(1, levels.energy * k));
 }
 
 // ---------------------------------------------------------------- música e cores
@@ -122,6 +127,9 @@ window.wallpaperPropertyListener?.applyUserProperties?.(fromUrl);
 // ---------------------------------------------------------------- quadros
 
 const ferro = new Ferro();
+const geodesic = new Geodesic();
+/** Raio da esfera geodésica com Tamanho 100%. */
+const GEO_RADIUS = 0.8;
 const STEPS = { low: 56, medium: 96, high: 128 };
 /** Distância da câmera ao centro com Zoom 100%. */
 const CAMERA_DISTANCE = 3.4;
@@ -174,8 +182,10 @@ function tick(now: number): void {
   pendingBeat = 0;
 
   const s = settings;
-  const sphere = s.shape === 'sphere';
-  const radius = (sphere ? SPHERE_RADIUS : PUDDLE_RADIUS) * (s.size / 100);
+  const geo = s.shape === 'geodesic';
+  const sphere = s.shape !== 'puddle';
+  // A esfera geodésica não tem espinhos, então pode ser maior.
+  const radius = (geo ? GEO_RADIUS : sphere ? SPHERE_RADIUS : PUDDLE_RADIUS) * (s.size / 100);
 
   // Câmera: órbita lenta e, se ligado, acompanha o mouse.
   orbitAngle += dt * (s.orbit / 100) * 0.4;
@@ -205,9 +215,9 @@ function tick(now: number): void {
 
   const idle = s.idlefield / 100;
   const drive = Math.min(1.5, level.bass) * (s.bassfield / 100) * 0.85 + Math.min(1.2, level.energy) * 0.25;
-  const maxSpike = (sphere ? 0.4 : 0.32) * radius * (s.spikeheight / 100);
+  const maxSpike = geo ? 0 : (sphere ? 0.4 : 0.32) * radius * (s.spikeheight / 100);
   ferro.update(dt, {
-    shape: s.shape,
+    shape: sphere ? 'sphere' : 'puddle',
     radius,
     maxSpike,
     field: Math.min(1.6, idle + (1 - idle * 0.4) * drive),
@@ -218,6 +228,27 @@ function tick(now: number): void {
     spinSpeed: (s.spherespin / 100) * 1.5,
   });
   patterns.update(dt, s.changespeed / 100);
+  harmonics.update(dt);
+  if (geo) {
+    geodesic.build(0.24 / (s.density / 100));
+    geodesic.update(dt, {
+      harmonics,
+      radius,
+      rotation: ferro.rotation,
+      holeSize: s.holesize / 100,
+      idle: s.idleholes / 100,
+      drops: s.drops / 100,
+      dropHeight: s.dropheight / 100,
+      beat,
+      energy: Math.min(1.2, level.energy),
+    });
+    renderer.setCells(geodesic.texture, CELL_TEX);
+  }
+  // Graves incham a esfera geodésica, como um fluido empurrado por dentro.
+  const swell = geo ? Math.min(1.5, level.bass) * (s.bassfield / 100) * 0.035 : 0;
+  const drops = new Float32Array(MAX_DROPS * 4);
+  const dropCount = geo ? geodesic.dropUniforms(ferro.sphere, drops) : 0;
+  const shell = 0.065 * radius;
 
   // Cores: transição suave e arco-íris opcional.
   approachPalette(palette, targetPalette(), 1 - Math.exp(-dt * 1.5));
@@ -246,10 +277,18 @@ function tick(now: number): void {
     uFocal: cam.focal,
     // A esfera anda em passos menores (espinhos para todos os lados).
     uSteps: Math.round(STEPS[s.detail] * (sphere ? 1.25 : 1)),
-    uShape: sphere ? 1 : 0,
+    uShape: geo ? 2 : sphere ? 1 : 0,
     uSphere: [...ferro.sphere, radius],
     uSphereRot: ferro.rotation,
-    uPulse: ferro.pulse,
+    uPulse: ferro.pulse + swell,
+    uGeo: [geodesic.spacing, geodesic.rings, geodesic.spacing * 0.13 * (s.strut / 100), shell],
+    uGeoSmooth: 0.045 * radius,
+    uTwist: TWIST,
+    uDrops: drops,
+    uDropCount: dropCount,
+    uReach: Math.max(radius * (1 + ferro.pulse + swell) + shell, geodesic.reach()) + 0.02,
+    uGeoColor: s.geocolor,
+    uMetal: s.metallic / 100,
     uCenter: [ferro.center.x, ferro.center.z],
     uRadius: radius,
     uMound: 0.07 * radius,

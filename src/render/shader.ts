@@ -12,6 +12,7 @@
 // coloridas (softboxes) e do fundo.
 
 export const MAX_RIPPLES = 8;
+export const MAX_DROPS = 24;
 
 export const VERTEX = /* glsl */ `#version 300 es
 in vec2 aPos;
@@ -22,6 +23,7 @@ export const FRAGMENT = /* glsl */ `#version 300 es
 precision highp float;
 
 #define MAX_RIPPLES ${MAX_RIPPLES}
+#define MAX_DROPS ${MAX_DROPS}
 #define MAX_STEPS 160
 #define TAU 6.2831853
 
@@ -35,10 +37,21 @@ uniform vec3 uCamU;
 uniform float uFocal;
 uniform int uSteps;
 
-uniform int uShape;       // 0 = poça, 1 = esfera
+uniform int uShape;       // 0 = poça, 1 = esfera de ferrofluido, 2 = esfera geodésica
 uniform vec4 uSphere;     // esfera: centro (x, y, z) e raio
 uniform mat3 uSphereRot;  // giro da esfera
 uniform float uPulse;     // esfera: inchaço das batidas e cliques
+
+// Esfera geodésica de fluido denso.
+uniform sampler2D uCells; // abertura de cada célula (linha = anel, coluna = célula)
+uniform vec4 uGeo;        // espaçamento (rad), anéis, meia largura da trama (rad), espessura da casca
+uniform float uGeoSmooth; // arredondamento das bordas
+uniform float uTwist;     // giro de cada anel, em fração do setor
+uniform vec4 uDrops[MAX_DROPS]; // gotas: centro e raio
+uniform int uDropCount;
+uniform float uReach;     // distância máxima do fluido ao centro
+uniform vec3 uGeoColor;
+uniform float uMetal;
 
 uniform vec2 uCenter;     // centro da poça (x, z)
 uniform float uRadius;    // raio da poça
@@ -274,6 +287,155 @@ vec3 tonemap(vec3 c) {
   return clamp(c * (mapped / max(k, 1e-4)), 0.0, 1.0);
 }
 
+float smin(float a, float b, float k) {
+  float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+  return mix(b, a, h) - k * h * (1.0 - h);
+}
+
+float smax(float a, float b, float k) {
+  return -smin(-a, -b, k);
+}
+
+// Casca com as janelas das células, perto da superfície.
+float geoShell(vec3 dir, float shell, float R, out float open) {
+  float D = uGeo.x;
+  float K = uGeo.y;
+  float th = acos(clamp(dir.y, -1.0, 1.0));
+  float ph = atan(dir.z, dir.x);
+  float k0 = floor(th / D);
+
+  // Pontos das células vizinhas: 4 anéis × 3 células.
+  vec4 cand[12];
+  int count = 0;
+  float d1 = 1e9;
+  vec3 c1 = vec3(0.0, 1.0, 0.0);
+  vec2 cell = vec2(0.0);
+  for (int dk = -1; dk <= 2; dk++) {
+    float k = k0 + float(dk);
+    if (k < 0.0 || k > K) continue;
+    float thk = k * D;
+    float sk = sin(thk);
+    float n = (k < 0.5 || k > K - 0.5) ? 1.0 : max(1.0, floor(TAU * sk / D + 0.5));
+    float sector = TAU / n;
+    float off = uTwist * sector * k;
+    float i0 = floor((ph - off) / sector + 0.5);
+    for (int di = -1; di <= 1; di++) {
+      if (n < 1.5 && di != 0) continue;
+      float i = i0 + float(di);
+      float a = i * sector + off;
+      vec3 c = vec3(sk * cos(a), cos(thk), sk * sin(a));
+      vec3 dd = dir - c;
+      float q = dot(dd, dd);
+      cand[count] = vec4(c, q);
+      count++;
+      if (q < d1) {
+        d1 = q;
+        c1 = c;
+        cell = vec2(mod(i, n), k);
+      }
+    }
+  }
+  open = texelFetch(uCells, ivec2(cell), 0).r;
+
+  // Distância até a borda da célula: o menor afastamento até os planos entre
+  // o ponto da célula e cada vizinho, num mínimo suave, que arredonda os
+  // cantos do buraco.
+  float soft = 0.09 * D;
+  float acc = 0.0;
+  for (int j = 0; j < 12; j++) {
+    if (j >= count) break;
+    vec3 c = cand[j].xyz;
+    float gap = length(c - c1);
+    if (gap < 1e-4) continue;
+    acc += exp(-((cand[j].w - d1) / (2.0 * gap)) / soft);
+  }
+  float edge = acc > 0.0 ? -soft * log(acc) : D;
+  // A borda fica a ~0,5·D do centro da célula: abaixo de 0,6·D a janela
+  // começa a abrir.
+  float hole = mix(0.6 * D, uGeo.z, pow(open, 0.7));
+  return smax(shell, (edge - hole) * R, uGeoSmooth);
+}
+
+// Esfera geodésica: casca de fluido com uma janela por célula. A célula é a
+// região mais perto do seu ponto (Voronoi); a borda dela é a trama. Com a
+// célula aberta, tudo que fica a mais de "meia largura da trama" da borda vira
+// buraco; fechada, a casca fica inteira.
+float geoSurface(vec3 p, out float open) {
+  vec3 rel = p - uSphere.xyz;
+  float len = length(rel);
+  vec3 dir = uSphereRot * (rel / max(len, 1e-5));
+  float R = uSphere.w * (1.0 + uPulse);
+  float shell = abs(len - R) - uGeo.w;
+  open = 0.0;
+
+  // Longe da casca as janelas não importam: buracos só tiram material, então
+  // a distância até a casca (menos a folga do arredondamento) já é segura.
+  float d = shell - 0.25 * uGeoSmooth;
+  if (shell < 2.0 * uGeoSmooth) d = geoShell(dir, shell, R, open);
+
+  // Gotas se fundem com a casca como fluido.
+  for (int i = 0; i < MAX_DROPS; i++) {
+    if (i >= uDropCount) break;
+    vec4 g = uDrops[i];
+    d = smin(d, length(p - g.xyz) - g.w, uGeoSmooth * 2.5);
+  }
+  return d;
+}
+
+float geoOnly(vec3 p) {
+  float o;
+  return geoSurface(p, o);
+}
+
+vec3 renderGeo(vec3 ro, vec3 rd) {
+  float bound = uReach + uGeoSmooth;
+  vec3 oc = ro - uSphere.xyz;
+  float b = dot(oc, rd);
+  float c = dot(oc, oc) - bound * bound;
+  float disc = b * b - c;
+  if (disc < 0.0) return backdrop(rd);
+  float sq = sqrt(disc);
+  float t = max(0.0, -b - sq);
+  float tEnd = -b + sq;
+  float minStep = (tEnd - t) / float(uSteps) * 0.3;
+  bool hit = false;
+  for (int i = 0; i < MAX_STEPS; i++) {
+    if (i >= uSteps || t > tEnd) break;
+    float d = geoOnly(ro + rd * t);
+    if (d < 0.0005 * uSphere.w) {
+      hit = true;
+      break;
+    }
+    t += max(d * 0.7, minStep);
+  }
+  if (!hit) return backdrop(rd);
+
+  vec3 p = ro + rd * t;
+  float e = 0.0015 * uSphere.w;
+  vec2 k = vec2(1.0, -1.0);
+  vec3 n = normalize(
+    k.xyy * geoOnly(p + k.xyy * e) + k.yyx * geoOnly(p + k.yyx * e) +
+    k.yxy * geoOnly(p + k.yxy * e) + k.xxx * geoOnly(p + k.xxx * e));
+
+  // Fluido denso e brilhante: cor própria, luz difusa das três luzes e o
+  // reflexo delas. O lado de dentro da casca fica na sombra.
+  vec3 rel = p - uSphere.xyz;
+  float inside = smoothstep(0.0, -0.4, dot(n, normalize(rel)));
+  float depth = clamp(length(rel) / uSphere.w, 0.0, 1.2);
+  float ao = mix(1.0, 0.35, inside) * mix(0.55, 1.0, smoothstep(0.85, 1.0, depth));
+  vec3 diffuse = uBg * 2.0 + 0.04;
+  diffuse += uL1 * max(dot(n, uL1Dir), 0.0) * 0.55;
+  diffuse += uL2 * max(dot(n, uL2Dir), 0.0) * 0.55;
+  diffuse += uL3 * max(dot(n, uL3Dir), 0.0) * 0.55;
+  diffuse += max(n.y, 0.0) * 0.12;
+  vec3 f0 = mix(vec3(0.05), uGeoColor, uMetal);
+  float cosv = max(dot(n, -rd), 0.0);
+  vec3 fres = f0 + (1.0 - f0) * pow(1.0 - cosv, 5.0);
+  vec3 refl = environment(reflect(rd, n));
+  vec3 col = uGeoColor * diffuse * uLightPower * (1.0 - uMetal * 0.85) + refl * fres * uMirror * 1.6;
+  return col * ao;
+}
+
 vec3 renderPuddle(vec3 ro, vec3 rd) {
   float top = uMound + uSpike * 1.75 + 0.06 * uRadius;
 
@@ -392,7 +554,9 @@ void main() {
   vec3 rd = normalize(uCamF * uFocal + uCamR * uv.x + uCamU * uv.y);
 
   vec3 col;
-  if (uShape == 1) {
+  if (uShape == 2) {
+    col = renderGeo(ro, rd);
+  } else if (uShape == 1) {
     col = renderSphere(ro, rd);
   } else {
     col = renderPuddle(ro, rd);

@@ -1,7 +1,7 @@
 // Desenha o ferrofluido num triângulo que cobre a tela, com o shader de
 // shader.ts. Os valores de cada quadro chegam num objeto { nome: valor }.
 
-import { FRAGMENT, MAX_RIPPLES, VERTEX } from './shader';
+import { FRAGMENT, MAX_DROPS, MAX_RIPPLES, VERTEX } from './shader';
 
 type Kind = '1f' | '1i' | '2f' | '3f' | '4f' | '4fv' | 'm3';
 
@@ -19,6 +19,14 @@ const UNIFORMS = {
   uSphere: '4f',
   uSphereRot: 'm3',
   uPulse: '1f',
+  uGeo: '4f',
+  uGeoSmooth: '1f',
+  uTwist: '1f',
+  uDrops: '4fv',
+  uDropCount: '1i',
+  uReach: '1f',
+  uGeoColor: '3f',
+  uMetal: '1f',
   uCenter: '2f',
   uRadius: '1f',
   uMound: '1f',
@@ -53,7 +61,7 @@ const UNIFORMS = {
 export type UniformName = Exclude<keyof typeof UNIFORMS, 'uRes'>;
 export type Frame = Record<UniformName, number | ArrayLike<number>>;
 
-export { MAX_RIPPLES };
+export { MAX_DROPS, MAX_RIPPLES };
 
 function compile(gl: WebGL2RenderingContext, type: number, source: string): WebGLShader {
   const shader = gl.createShader(type)!;
@@ -68,6 +76,8 @@ function compile(gl: WebGL2RenderingContext, type: number, source: string): WebG
 export class Renderer {
   private readonly gl: WebGL2RenderingContext;
   private readonly loc = new Map<string, WebGLUniformLocation | null>();
+  private readonly cells: WebGLTexture;
+  private cellSize = 0;
   /** Fração da resolução da tela usada no desenho (opção Resolução). */
   quality = 1;
 
@@ -87,6 +97,16 @@ export class Renderer {
     gl.useProgram(program);
     for (const name of Object.keys(UNIFORMS)) this.loc.set(name, gl.getUniformLocation(program, name));
 
+    // Textura com a abertura de cada célula da esfera geodésica.
+    this.cells = gl.createTexture()!;
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, this.cells);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.uniform1i(gl.getUniformLocation(program, 'uCells'), 0);
+
     const buffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
@@ -104,6 +124,18 @@ export class Renderer {
       this.canvas.height = h;
     }
     return w / h;
+  }
+
+  /** Envia a textura quadrada (RGBA, `size` × `size`) das células. */
+  setCells(data: Uint8Array, size: number): void {
+    const gl = this.gl;
+    gl.bindTexture(gl.TEXTURE_2D, this.cells);
+    if (size !== this.cellSize) {
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, size, size, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
+      this.cellSize = size;
+    } else {
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, size, size, gl.RGBA, gl.UNSIGNED_BYTE, data);
+    }
   }
 
   draw(frame: Frame): void {
