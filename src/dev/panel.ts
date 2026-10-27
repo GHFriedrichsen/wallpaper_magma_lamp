@@ -18,12 +18,12 @@ function fromHex(hex: string): string {
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => (v / 255).toFixed(3)).join(' ');
 }
 
-/** Entende condições simples do Wallpaper Engine: "chave.value == 'x'" e "!=". */
+/** Entende condições simples do Wallpaper Engine: "chave.value == 'x'", "!=" e "== true". */
 function visible(def: PropertyDef, values: Record<string, unknown>): boolean {
   if (!def.condition) return true;
-  const m = /^(\w+)\.value\s*(==|!=)\s*'([^']*)'$/.exec(def.condition.trim());
+  const m = /^(\w+)\.value\s*(==|!=)\s*(?:'([^']*)'|(true|false))$/.exec(def.condition.trim());
   if (!m) return true;
-  const equal = String(values[m[1]]) === m[3];
+  const equal = String(values[m[1]]) === (m[3] ?? m[4]);
   return m[2] === '==' ? equal : !equal;
 }
 

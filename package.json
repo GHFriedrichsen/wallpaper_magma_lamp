@@ -1,9 +1,9 @@
 {
-  "name": "wallpaper-magma-lamp",
+  "name": "wallpaper-ferrofluido",
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "Lâmpada de magma com cimática em fluidos para o Wallpaper Engine",
+  "description": "Ferrofluido com cimática para o Wallpaper Engine",
   "scripts": {
     "dev": "vite",
     "project": "node scripts/project.ts",

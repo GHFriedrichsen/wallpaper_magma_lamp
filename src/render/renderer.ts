@@ -1,66 +1,59 @@
-// Desenha a lâmpada num triângulo que cobre a tela, com o shader de shader.ts.
+// Desenha o ferrofluido num triângulo que cobre a tela, com o shader de
+// shader.ts. Os valores de cada quadro chegam num objeto { nome: valor }.
 
-import { FRAGMENT, MAX_BLOBS, MAX_RIPPLES, VERTEX } from './shader';
+import { FRAGMENT, MAX_RIPPLES, VERTEX } from './shader';
 
-export interface FrameUniforms {
-  time: number;
-  blobs: Float32Array; // MAX_BLOBS × vec4
-  blobsB: Float32Array; // MAX_BLOBS × vec4
-  count: number;
-  radius: number;
-  star: Float32Array; // 3 × vec4
-  starGain: number;
-  wave: Float32Array; // 3 × vec4
-  ripples: Float32Array; // MAX_RIPPLES × vec4
-  kernel: number;
-  threshold: number;
-  pool: number;
-  lamp: boolean;
-  colors: Record<'wax' | 'hot' | 'top' | 'bottom' | 'glow' | 'metal' | 'backdrop', number[]>;
-  glow: number;
-  shine: number;
-  refract: number;
-  bright: number;
-  vignette: number;
-  grain: number;
-  bass: number;
-  energy: number;
-}
+type Kind = '1f' | '1i' | '2f' | '3f' | '4f' | '4fv' | 'm3';
 
-export function emptyFrame(): FrameUniforms {
-  return {
-    time: 0,
-    blobs: new Float32Array(MAX_BLOBS * 4),
-    blobsB: new Float32Array(MAX_BLOBS * 4),
-    count: 0,
-    radius: 0.07,
-    star: new Float32Array(12),
-    starGain: 3,
-    wave: new Float32Array(12),
-    ripples: new Float32Array(MAX_RIPPLES * 4),
-    kernel: 1.8,
-    threshold: 0.33,
-    pool: 0,
-    lamp: false,
-    colors: { wax: [1, 0, 0], hot: [1, 1, 0], top: [0, 0, 0], bottom: [0, 0, 0], glow: [1, 0, 0], metal: [0.5, 0.5, 0.5], backdrop: [0, 0, 0] },
-    glow: 1,
-    shine: 1,
-    refract: 1,
-    bright: 1,
-    vignette: 0.4,
-    grain: 0.1,
-    bass: 0,
-    energy: 0,
-  };
-}
+/** Uniforms do shader e o tipo de cada um. */
+const UNIFORMS = {
+  uRes: '2f',
+  uTime: '1f',
+  uCamPos: '3f',
+  uCamF: '3f',
+  uCamR: '3f',
+  uCamU: '3f',
+  uFocal: '1f',
+  uSteps: '1i',
+  uShape: '1i',
+  uSphere: '4f',
+  uSphereRot: 'm3',
+  uPulse: '1f',
+  uCenter: '2f',
+  uRadius: '1f',
+  uMound: '1f',
+  uMagnet: '2f',
+  uFieldR: '1f',
+  uSpike: '1f',
+  uSharp: '1f',
+  uShimmer: '1f',
+  uPatA: '4f',
+  uPatB: '4f',
+  uPatAngle: '2f',
+  uPatBase: '2f',
+  uPatHeight: '2f',
+  uBlend: '1f',
+  uRipple: '4fv',
+  uL1: '3f',
+  uL2: '3f',
+  uL3: '3f',
+  uL1Dir: '3f',
+  uL2Dir: '3f',
+  uL3Dir: '3f',
+  uBg: '3f',
+  uFluid: '3f',
+  uLightPower: '1f',
+  uMirror: '1f',
+  uBgGlow: '1f',
+  uBright: '1f',
+  uVignette: '1f',
+  uGrain: '1f',
+} as const satisfies Record<string, Kind>;
 
-const UNIFORMS = [
-  'uRes', 'uAspect', 'uTime', 'uBlob', 'uBlobB', 'uCount', 'uRadius', 'uStar', 'uStarGain', 'uWave',
-  'uRipple', 'uKernel', 'uThreshold', 'uPool', 'uLamp', 'uWax', 'uHot', 'uTop', 'uBottom', 'uGlowCol',
-  'uMetal', 'uBackdrop', 'uGlow', 'uShine', 'uRefract', 'uBright', 'uVignette', 'uGrain', 'uBass', 'uEnergy',
-] as const;
+export type UniformName = Exclude<keyof typeof UNIFORMS, 'uRes'>;
+export type Frame = Record<UniformName, number | ArrayLike<number>>;
 
-type Uniform = (typeof UNIFORMS)[number];
+export { MAX_RIPPLES };
 
 function compile(gl: WebGL2RenderingContext, type: number, source: string): WebGLShader {
   const shader = gl.createShader(type)!;
@@ -74,7 +67,7 @@ function compile(gl: WebGL2RenderingContext, type: number, source: string): WebG
 
 export class Renderer {
   private readonly gl: WebGL2RenderingContext;
-  private readonly loc = {} as Record<Uniform, WebGLUniformLocation | null>;
+  private readonly loc = new Map<string, WebGLUniformLocation | null>();
   /** Fração da resolução da tela usada no desenho (opção Resolução). */
   quality = 1;
 
@@ -92,7 +85,7 @@ export class Renderer {
       throw new Error(`Erro ao ligar o shader: ${gl.getProgramInfoLog(program)}`);
     }
     gl.useProgram(program);
-    for (const name of UNIFORMS) this.loc[name] = gl.getUniformLocation(program, name);
+    for (const name of Object.keys(UNIFORMS)) this.loc.set(name, gl.getUniformLocation(program, name));
 
     const buffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
@@ -113,43 +106,27 @@ export class Renderer {
     return w / h;
   }
 
-  draw(u: FrameUniforms): void {
+  draw(frame: Frame): void {
     const gl = this.gl;
-    const l = this.loc;
     const { width, height } = this.canvas;
     gl.viewport(0, 0, width, height);
-    gl.uniform2f(l.uRes, width, height);
-    gl.uniform1f(l.uAspect, width / height);
-    gl.uniform1f(l.uTime, u.time);
-    gl.uniform4fv(l.uBlob, u.blobs);
-    gl.uniform4fv(l.uBlobB, u.blobsB);
-    gl.uniform1i(l.uCount, u.count);
-    gl.uniform1f(l.uRadius, u.radius);
-    gl.uniform4fv(l.uStar, u.star);
-    gl.uniform1f(l.uStarGain, u.starGain);
-    gl.uniform4fv(l.uWave, u.wave);
-    gl.uniform4fv(l.uRipple, u.ripples);
-    gl.uniform1f(l.uKernel, u.kernel);
-    gl.uniform1f(l.uThreshold, u.threshold);
-    gl.uniform1f(l.uPool, u.pool);
-    gl.uniform1f(l.uLamp, u.lamp ? 1 : 0);
-    gl.uniform3fv(l.uWax, u.colors.wax);
-    gl.uniform3fv(l.uHot, u.colors.hot);
-    gl.uniform3fv(l.uTop, u.colors.top);
-    gl.uniform3fv(l.uBottom, u.colors.bottom);
-    gl.uniform3fv(l.uGlowCol, u.colors.glow);
-    gl.uniform3fv(l.uMetal, u.colors.metal);
-    gl.uniform3fv(l.uBackdrop, u.colors.backdrop);
-    gl.uniform1f(l.uGlow, u.glow);
-    gl.uniform1f(l.uShine, u.shine);
-    gl.uniform1f(l.uRefract, u.refract);
-    gl.uniform1f(l.uBright, u.bright);
-    gl.uniform1f(l.uVignette, u.vignette);
-    gl.uniform1f(l.uGrain, u.grain);
-    gl.uniform1f(l.uBass, u.bass);
-    gl.uniform1f(l.uEnergy, u.energy);
+    gl.uniform2f(this.loc.get('uRes')!, width, height);
+    for (const [name, kind] of Object.entries(UNIFORMS) as [string, Kind][]) {
+      if (name === 'uRes') continue;
+      const loc = this.loc.get(name);
+      if (!loc) continue;
+      const v = frame[name as UniformName];
+      const a = v as ArrayLike<number>;
+      switch (kind) {
+        case '1f': gl.uniform1f(loc, v as number); break;
+        case '1i': gl.uniform1i(loc, v as number); break;
+        case '2f': gl.uniform2f(loc, a[0], a[1]); break;
+        case '3f': gl.uniform3f(loc, a[0], a[1], a[2]); break;
+        case '4f': gl.uniform4f(loc, a[0], a[1], a[2], a[3]); break;
+        case '4fv': gl.uniform4fv(loc, a as Float32Array); break;
+        case 'm3': gl.uniformMatrix3fv(loc, false, a as Float32Array); break;
+      }
+    }
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 }
-
-export { MAX_BLOBS, MAX_RIPPLES };

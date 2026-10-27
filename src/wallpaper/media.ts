@@ -1,16 +1,36 @@
-// Cores da capa da música que está tocando (Wallpaper Engine 2.1+).
+// Música que está tocando (Wallpaper Engine 2.1+): cores da capa, título,
+// artista e se está tocando.
 
-import type { RGB } from '../lava/palette';
+import type { RGB } from '../ferro/palette';
 
 interface ThumbnailEvent {
   primaryColor?: string;
   secondaryColor?: string;
 }
 
+interface PropertiesEvent {
+  title?: string;
+  artist?: string;
+}
+
+interface PlaybackEvent {
+  /** 0 = parado, 1 = tocando, 2 = pausado. */
+  state?: number;
+}
+
 declare global {
   interface Window {
     wallpaperRegisterMediaThumbnailListener?: (cb: (event: ThumbnailEvent) => void) => void;
+    wallpaperRegisterMediaPropertiesListener?: (cb: (event: PropertiesEvent) => void) => void;
+    wallpaperRegisterMediaPlaybackListener?: (cb: (event: PlaybackEvent) => void) => void;
   }
+}
+
+export interface Song {
+  title: string;
+  artist: string;
+  /** Falso quando a música parou (pausada continua valendo). */
+  active: boolean;
 }
 
 /** Aceita "#rrggbb", "#rgb" ou "rgb(r, g, b)"; devolve null se não entender. */
@@ -29,10 +49,22 @@ export function parseCssColor(css: string | undefined): RGB | null {
   return null;
 }
 
-export function listenToMedia(onColors: (primary: RGB, secondary: RGB) => void): void {
+export function listenToMedia(onColors: (primary: RGB, secondary: RGB) => void, onSong: (song: Song) => void): void {
   window.wallpaperRegisterMediaThumbnailListener?.((event) => {
     const primary = parseCssColor(event.primaryColor);
     const secondary = parseCssColor(event.secondaryColor) ?? primary;
     if (primary && secondary) onColors(primary, secondary);
+  });
+
+  const song: Song = { title: '', artist: '', active: false };
+  window.wallpaperRegisterMediaPropertiesListener?.((event) => {
+    song.title = event.title ?? '';
+    song.artist = event.artist ?? '';
+    song.active = song.title !== '';
+    onSong({ ...song });
+  });
+  window.wallpaperRegisterMediaPlaybackListener?.((event) => {
+    song.active = event.state !== 0 && song.title !== '';
+    onSong({ ...song });
   });
 }

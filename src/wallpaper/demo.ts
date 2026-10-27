@@ -1,20 +1,23 @@
 // Áudio simulado para testar no navegador (?demo): uma melodia de notas de
 // 2 s, às vezes com uma segunda nota junto, mais bumbo, chimbal e um trecho
-// mais alto a cada 8 s. Também troca as "cores da capa" a cada 12 s.
+// mais alto a cada 8 s. Também troca a "música" (cores da capa, título e
+// artista) a cada 12 s.
 
-import type { RGB } from '../lava/palette';
+import type { RGB } from '../ferro/palette';
 import { BANDS } from './audio';
+import type { Song } from './media';
 
 const MELODY = [9, 14, 18, 12, 24, 31, 20, 40, 16, 27, 35, 48];
-const COVERS: [RGB, RGB][] = [
-  [[0.9, 0.3, 0.2], [0.2, 0.1, 0.4]],
-  [[0.2, 0.7, 0.9], [0.05, 0.1, 0.2]],
-  [[0.95, 0.8, 0.2], [0.5, 0.1, 0.3]],
+const COVERS: { colors: [RGB, RGB]; title: string; artist: string }[] = [
+  { colors: [[0.9, 0.3, 0.2], [0.2, 0.1, 0.4]], title: 'Campo Magnético', artist: 'Demo' },
+  { colors: [[0.2, 0.7, 0.9], [0.05, 0.1, 0.2]], title: 'Rosensweig', artist: 'Demo' },
+  { colors: [[0.95, 0.8, 0.2], [0.5, 0.1, 0.3]], title: 'Cimática nº 3', artist: 'Demo' },
 ];
 
 export function startDemo(
   onSpectrum: (spectrum: Float32Array) => void,
   onCover: (primary: RGB, secondary: RGB) => void,
+  onSong: (song: Song) => void,
 ): void {
   const spectrum = new Float32Array(BANDS * 2);
   const start = performance.now();
@@ -47,7 +50,8 @@ export function startDemo(
     const c = Math.floor(t / 12) % COVERS.length;
     if (c !== cover) {
       cover = c;
-      onCover(COVERS[c][0], COVERS[c][1]);
+      onCover(COVERS[c].colors[0], COVERS[c].colors[1]);
+      onSong({ title: COVERS[c].title, artist: COVERS[c].artist, active: true });
     }
   }, 33);
 }

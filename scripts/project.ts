@@ -4,7 +4,7 @@ import { writeFileSync } from 'node:fs';
 import { SCHEMA } from '../src/wallpaper/schema.ts';
 
 const properties: Record<string, Record<string, unknown>> = {
-  schemecolor: { order: 0, text: 'ui_browse_properties_scheme_color', type: 'color', value: '1 0.35 0.05' },
+  schemecolor: { order: 0, text: 'ui_browse_properties_scheme_color', type: 'color', value: '0.1 0.8 1' },
 };
 
 SCHEMA.forEach((def, i) => {
@@ -31,11 +31,11 @@ SCHEMA.forEach((def, i) => {
 });
 
 const project = {
-  title: 'Lâmpada de Magma',
+  title: 'Ferrofluido',
   description:
-    'Lâmpada de lava com cimática em fluidos: as bolhas de cera sobem e descem com o calor, ' +
-    'vibram como gotas estrela a cada nota e o líquido forma ondas de Faraday. Cores, formato, ' +
-    'bolhas, cimática, áudio e mouse personalizáveis.',
+    'Ferrofluido com cimática: o som vira campo magnético. Os graves levantam os espinhos, cada nota ' +
+    'desenha uma figura (favo ou mandala), as batidas fazem os espinhos pularem e o nome da música ' +
+    'aparece em volta da tela. Poça ou esfera; luzes, cores, câmera, áudio e mouse personalizáveis.',
   type: 'web',
   file: 'index.html',
   preview: 'preview.jpg',

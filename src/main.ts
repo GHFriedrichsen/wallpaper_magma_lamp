@@ -1,5 +1,6 @@
-import { Lava, makeContainer, type Forces } from './lava/blobs';
-import { Cymatics } from './lava/cymatics';
+import { hitPlane, orbitCamera, screenRay } from './ferro/camera';
+import { Ferro, MAX_RIPPLES, PUDDLE_RADIUS, SPHERE_RADIUS } from './ferro/ferro';
+import type { Vec3 } from './ferro/math3';
 import {
   PRESETS,
   approachPalette,
@@ -8,11 +9,13 @@ import {
   rotatePalette,
   type Palette,
   type RGB,
-} from './lava/palette';
-import { MAX_BLOBS, MAX_RIPPLES, Renderer, emptyFrame } from './render/renderer';
+} from './ferro/palette';
+import { HEX, Patterns, type Pattern } from './ferro/patterns';
+import { TitleOverlay } from './overlay/title';
+import { Renderer, type Frame } from './render/renderer';
 import { AudioAnalyzer, silentLevels } from './wallpaper/audio';
 import { startDemo } from './wallpaper/demo';
-import { listenToMedia } from './wallpaper/media';
+import { listenToMedia, type Song } from './wallpaper/media';
 import { defaultSettings, listenToProperties, type Settings } from './wallpaper/properties';
 
 declare global {
@@ -22,7 +25,7 @@ declare global {
 }
 
 const params = new URLSearchParams(location.search);
-const canvas = document.getElementById('lava') as HTMLCanvasElement;
+const canvas = document.getElementById('ferro') as HTMLCanvasElement;
 const settings: Settings = defaultSettings();
 
 let renderer: Renderer;
@@ -30,14 +33,14 @@ try {
   renderer = new Renderer(canvas);
 } catch (err) {
   document.body.style.cssText = 'color:#ccc;font:16px sans-serif;display:grid;place-items:center;';
-  document.body.textContent = `Não foi possível iniciar a lâmpada: ${(err as Error).message}`;
+  document.body.textContent = `Não foi possível iniciar o ferrofluido: ${(err as Error).message}`;
   throw err;
 }
 
 // ---------------------------------------------------------------- áudio
 
 const analyzer = new AudioAnalyzer();
-const cymatics = new Cymatics();
+const patterns = new Patterns();
 /** Níveis da última leitura, já multiplicados pela Reação ao áudio. */
 const target = silentLevels();
 /** Níveis suavizados a cada quadro: sobem rápido e descem devagar. */
@@ -52,113 +55,64 @@ function onSpectrum(spectrum: ArrayLike<number>): void {
   target.treble = levels.treble * k;
   target.energy = levels.energy * k;
   pendingBeat = Math.max(pendingBeat, Math.min(1.5, levels.beat * k));
-  cymatics.hear(
-    levels.notes.map((n) => ({ band: n.band, strength: Math.min(1, n.strength * k) })),
-    Math.min(1, levels.energy * k),
-  );
+  patterns.hear(levels.notes.map((n) => ({ band: n.band, strength: Math.min(1, n.strength * k) })));
 }
 
-// ---------------------------------------------------------------- cores
+// ---------------------------------------------------------------- música e cores
 
 let mediaPalette: Palette | null = null;
-const palette = clonePalette(PRESETS.classic);
+const palette = clonePalette(PRESETS.aurora);
 let hueAngle = 0;
+const title = new TitleOverlay();
 
 function targetPalette(): Palette {
   if (settings.colorscheme === 'custom') {
-    return {
-      wax: settings.waxcolor,
-      hot: settings.waxhot,
-      top: settings.liquidtop,
-      bottom: settings.liquidbottom,
-      glow: settings.glowcolor,
-    };
+    return { light1: settings.light1, light2: settings.light2, light3: settings.light3, background: settings.background };
   }
-  if (settings.colorscheme === 'music') return mediaPalette ?? PRESETS.classic;
-  return PRESETS[settings.colorscheme] ?? PRESETS.classic;
+  if (settings.colorscheme === 'music') return mediaPalette ?? PRESETS.aurora;
+  return PRESETS[settings.colorscheme] ?? PRESETS.aurora;
 }
 
 function onCover(primary: RGB, secondary: RGB): void {
   mediaPalette = paletteFromMedia(primary, secondary);
 }
 
+function onSong(song: Song): void {
+  title.setSong(song);
+}
+
 // ---------------------------------------------------------------- mouse
 
-const mouse = { x: 0, y: 0.5, vx: 0, vy: 0, active: false, lastMove: -1e9, lastRipple: 0 };
-let aspect = renderer.resize();
-
-function toScene(e: PointerEvent | MouseEvent): { x: number; y: number } {
-  return {
-    x: (e.clientX / window.innerWidth - 0.5) * aspect,
-    y: 1 - e.clientY / window.innerHeight,
-  };
-}
-
-interface Ripple {
-  x: number;
-  y: number;
-  age: number;
-  strength: number;
-}
-const ripples: Ripple[] = [];
-
-function addRipple(x: number, y: number, strength: number): void {
-  if (ripples.length >= MAX_RIPPLES) ripples.shift();
-  ripples.push({ x, y, age: 0, strength });
-}
+/** Posição do mouse na tela, de 0 a 1 (y para baixo). */
+const mouse = { sx: 0.5, sy: 0.5, lastMove: -1e9, click: null as null | { sx: number; sy: number } };
 
 window.addEventListener('pointermove', (e) => {
-  const p = toScene(e);
-  const now = performance.now();
-  const dt = Math.max(0.008, (now - mouse.lastMove) / 1000);
-  if (dt < 0.5) {
-    mouse.vx += ((p.x - mouse.x) / dt - mouse.vx) * 0.5;
-    mouse.vy += ((p.y - mouse.y) / dt - mouse.vy) * 0.5;
-  }
-  mouse.x = p.x;
-  mouse.y = p.y;
-  mouse.lastMove = now;
-
-  if (settings.mousemode === 'ripple' && settings.mousestrength > 0 && now - mouse.lastRipple > 110) {
-    const speed = Math.hypot(mouse.vx, mouse.vy);
-    if (speed > 0.05) {
-      mouse.lastRipple = now;
-      addRipple(p.x, p.y, Math.min(1.2, speed * 0.6) * (settings.mousestrength / 100));
-    }
-  }
+  mouse.sx = e.clientX / window.innerWidth;
+  mouse.sy = e.clientY / window.innerHeight;
+  mouse.lastMove = performance.now();
 });
 
 window.addEventListener('pointerdown', (e) => {
-  if (!settings.clickripples) return;
-  const p = toScene(e);
-  addRipple(p.x, p.y, 1.4);
+  mouse.click = { sx: e.clientX / window.innerWidth, sy: e.clientY / window.innerHeight };
 });
 
-// ---------------------------------------------------------------- lâmpada
+// ---------------------------------------------------------------- opções
 
-const lava = new Lava(makeContainer(settings.shape, aspect));
-let shape = settings.shape;
+let aspect = renderer.resize();
 
 function applySettings(): void {
   renderer.quality = settings.quality / 100;
   aspect = renderer.resize();
-  if (settings.shape !== shape) {
-    shape = settings.shape;
-    lava.setContainer(makeContainer(shape, aspect));
-  }
-  lava.sizeScale = settings.blobsize / 100;
-  lava.setCount(Math.min(MAX_BLOBS, Math.round(settings.blobcount)));
 }
 
 window.addEventListener('resize', () => {
   aspect = renderer.resize();
-  lava.setContainer(makeContainer(shape, aspect));
 });
 
 listenToProperties(settings, applySettings);
 applySettings();
 
-// Opções também pela URL, para testar no navegador (ex.: ?demo&shape=lamp).
+// Opções também pela URL, para testar no navegador (ex.: ?demo&shape=sphere).
 const fromUrl: Record<string, { value: string | boolean }> = {};
 params.forEach((value, key) => {
   fromUrl[key] = { value: value === 'true' ? true : value === 'false' ? false : value.replace(/,/g, ' ') };
@@ -167,19 +121,41 @@ window.wallpaperPropertyListener?.applyUserProperties?.(fromUrl);
 
 // ---------------------------------------------------------------- quadros
 
-/** Amplitude máxima da gota estrela, em fração do raio. */
-const STAR = 0.22;
-/** Altura máxima das ondas de Faraday, em alturas de tela. */
-const FARADAY = 0.0012;
+const ferro = new Ferro();
+const STEPS = { low: 56, medium: 96, high: 128 };
+/** Distância da câmera ao centro com Zoom 100%. */
+const CAMERA_DISTANCE = 3.4;
 
-const frame = emptyFrame();
 let last = performance.now();
 let lastDrawn = 0;
 let clock = 0;
+let orbitAngle = 0;
+let lightAngle = 0;
+let figureAngle = 0;
 
 function smooth(current: number, goal: number, dt: number): number {
   const rate = goal > current ? 18 : 5;
   return current + (goal - current) * (1 - Math.exp(-rate * dt));
+}
+
+/** Raio da base do espinho, em espaçamentos: na mandala cabe menos em volta do anel. */
+function spikeBase(p: Pattern): number {
+  return p.type === HEX ? 0.5 : Math.min(0.5, (Math.PI / p.symmetry) * 0.95);
+}
+
+/**
+ * Espinhos altos quando são poucos e baixos quando são muitos, como no
+ * ferrofluido de verdade: a altura não passa de 1,6 vez a distância entre
+ * eles. `gap` é essa distância em unidades do mundo.
+ */
+function spikeHeight(p: Pattern, gap: number, maxSpike: number): number {
+  const byPattern = Math.min(1.25, Math.max(0.45, Math.pow(p.spacing / 0.22, 0.7)));
+  return maxSpike > 0 ? Math.min(byPattern, (1.6 * gap) / maxSpike) : byPattern;
+}
+
+function lightDir(azimuth: number, elevationDeg: number): Vec3 {
+  const e = (Math.min(85, elevationDeg) * Math.PI) / 180;
+  return [Math.cos(e) * Math.sin(azimuth), Math.sin(e), -Math.cos(e) * Math.cos(azimuth)];
 }
 
 function tick(now: number): void {
@@ -194,110 +170,130 @@ function tick(now: number): void {
   level.mid = smooth(level.mid, target.mid, dt);
   level.treble = smooth(level.treble, target.treble, dt);
   level.energy = smooth(level.energy, target.energy, dt);
-  const beat = pendingBeat;
+  const beat = pendingBeat * (settings.beatjump / 100);
   pendingBeat = 0;
 
-  mouse.active = now - mouse.lastMove < 1500;
-  if (!mouse.active) {
-    mouse.vx = 0;
-    mouse.vy = 0;
-  }
+  const s = settings;
+  const sphere = s.shape === 'sphere';
+  const radius = (sphere ? SPHERE_RADIUS : PUDDLE_RADIUS) * (s.size / 100);
 
-  const forces: Forces = {
-    bass: Math.min(1.5, level.bass),
-    beat,
-    bassHeat: settings.bassheat / 100,
-    beatBounce: settings.beatbounce / 100,
-    mouse,
-    mouseMode: settings.mousemode,
-    mouseStrength: settings.mousestrength / 100,
-    mouseRadius: (settings.mouseradius / 100) * (shape === 'lamp' ? 0.6 : 1),
+  // Câmera: órbita lenta e, se ligado, acompanha o mouse.
+  orbitAngle += dt * (s.orbit / 100) * 0.4;
+  const mouseOn = s.mouse && now - mouse.lastMove < 2500;
+  const parallax = s.mouse ? s.mouseparallax / 100 : 0;
+  const cam = orbitCamera(
+    sphere ? [0, 0, 0] : [0, 0.1, 0],
+    s.camangle - (mouse.sy - 0.5) * 20 * parallax,
+    orbitAngle + (mouse.sx - 0.5) * 0.6 * parallax,
+    CAMERA_DISTANCE / (s.zoom / 100),
+  );
+
+  // Onde o mouse aponta no mundo: no plano da poça ou no plano de frente
+  // para a câmera que passa pelo centro da esfera.
+  const toWorld = (sx: number, sy: number): Vec3 | null => {
+    const dir = screenRay(cam, aspect, sx, sy);
+    return sphere
+      ? hitPlane(cam.pos, dir, [0, 0, 0], cam.forward.map((v) => -v) as Vec3)
+      : hitPlane(cam.pos, dir, [0, 0.08, 0], [0, 1, 0]);
   };
-  lava.update(dt, forces, settings.speed / 100);
-  cymatics.update(dt, settings.vibrationspeed / 100);
 
-  for (const r of ripples) r.age += dt;
-  while (ripples.length && ripples[0].age > 4) ripples.shift();
+  if (mouse.click && s.mouse && s.mouseclick > 0) {
+    const p = toWorld(mouse.click.sx, mouse.click.sy);
+    if (p) ferro.splash(p[0], p[2], 1.2 * (s.mouseclick / 100));
+  }
+  mouse.click = null;
+
+  const idle = s.idlefield / 100;
+  const drive = Math.min(1.5, level.bass) * (s.bassfield / 100) * 0.85 + Math.min(1.2, level.energy) * 0.25;
+  const maxSpike = (sphere ? 0.4 : 0.32) * radius * (s.spikeheight / 100);
+  ferro.update(dt, {
+    shape: s.shape,
+    radius,
+    maxSpike,
+    field: Math.min(1.6, idle + (1 - idle * 0.4) * drive),
+    beat,
+    mouse: mouseOn ? toWorld(mouse.sx, mouse.sy) : null,
+    follow: s.mouse ? s.mousemagnet / 100 : 0,
+    sphereMotion: s.spheremotion,
+    spinSpeed: (s.spherespin / 100) * 1.5,
+  });
+  patterns.update(dt, s.changespeed / 100);
 
   // Cores: transição suave e arco-íris opcional.
   approachPalette(palette, targetPalette(), 1 - Math.exp(-dt * 1.5));
-  hueAngle = (hueAngle + dt * (settings.huecycle / 100) * 0.8) % (Math.PI * 2);
-  const colors = settings.huecycle > 0 ? rotatePalette(palette, hueAngle) : palette;
+  hueAngle = (hueAngle + dt * (s.huecycle / 100) * 0.8) % (Math.PI * 2);
+  const colors = s.huecycle > 0 ? rotatePalette(palette, hueAngle) : palette;
 
-  fillFrame(colors);
+  lightAngle += dt * (s.lightspeed / 100) * 0.6;
+  figureAngle += dt * (s.spin / 100) * 0.5;
+
+  const [patA, patB, blend] = patterns.shapes(s.cymatics);
+  const density = s.density / 100;
+  // Na poça o espaçamento é em unidades do mundo; na esfera, em radianos.
+  const spacing = (p: Pattern) => (sphere ? (p.spacing * 1.2) / density : (p.spacing * radius) / density);
+  const pulse = 1 + (s.lightpulse / 100) * (0.6 * Math.min(1.2, level.energy) + 0.4 * Math.min(1.2, level.bass));
+  const lit = (c: RGB, power: number): RGB => c.map((v) => (v * power) / 100) as RGB;
+
+  const ripples = new Float32Array(MAX_RIPPLES * 4);
+  if (!sphere) ferro.ripples.forEach((r, i) => ripples.set([r.x, r.z, r.age, r.strength], i * 4));
+
+  const frame: Frame = {
+    uTime: clock,
+    uCamPos: cam.pos,
+    uCamF: cam.forward,
+    uCamR: cam.right,
+    uCamU: cam.up,
+    uFocal: cam.focal,
+    // A esfera anda em passos menores (espinhos para todos os lados).
+    uSteps: Math.round(STEPS[s.detail] * (sphere ? 1.25 : 1)),
+    uShape: sphere ? 1 : 0,
+    uSphere: [...ferro.sphere, radius],
+    uSphereRot: ferro.rotation,
+    uPulse: ferro.pulse,
+    uCenter: [ferro.center.x, ferro.center.z],
+    uRadius: radius,
+    uMound: 0.07 * radius,
+    uMagnet: [ferro.magnet.x, ferro.magnet.z],
+    uFieldR: 0.62 * radius,
+    uSpike: ferro.spike,
+    uSharp: 0.7 + (s.sharpness / 100) * 2.5,
+    uShimmer: Math.min(1.5, level.treble) * (s.trebleshimmer / 100) * 0.25,
+    uPatA: [patA.type, spacing(patA), patA.symmetry, patA.twist],
+    uPatB: [patB.type, spacing(patB), patB.symmetry, patB.twist],
+    uPatAngle: [patA.angle + figureAngle, patB.angle + figureAngle],
+    uPatBase: [spikeBase(patA), spikeBase(patB)],
+    uPatHeight: [
+      spikeHeight(patA, spacing(patA) * (sphere ? radius : 1), maxSpike),
+      spikeHeight(patB, spacing(patB) * (sphere ? radius : 1), maxSpike),
+    ],
+    uBlend: blend,
+    uRipple: ripples,
+    uL1: lit(colors.light1, s.light1power),
+    uL2: lit(colors.light2, s.light2power),
+    uL3: lit(colors.light3, s.light3power),
+    uL1Dir: lightDir(lightAngle + 0.9, s.lightheight),
+    uL2Dir: lightDir(lightAngle + 3.0, s.lightheight + 8),
+    uL3Dir: lightDir(lightAngle + 5.0, s.lightheight + 30),
+    uBg: colors.background,
+    uFluid: s.fluidcolor,
+    uLightPower: pulse,
+    uMirror: s.mirror / 100,
+    uBgGlow: s.backgroundglow / 100,
+    uBright: s.brightness / 100,
+    uVignette: s.vignette / 100,
+    uGrain: s.grain / 100,
+  };
   renderer.draw(frame);
-}
-
-function fillFrame(colors: Palette): void {
-  const u = frame;
-  const bass = Math.min(1.2, level.bass);
-  const blobs = lava.blobs;
-  const star = settings.cymatics === 'both' || settings.cymatics === 'star';
-  const faraday = settings.cymatics === 'both' || settings.cymatics === 'faraday';
-  const strength = settings.cymaticsstrength / 100;
-
-  u.time = clock;
-  u.count = blobs.length;
-  for (let i = 0; i < blobs.length; i++) {
-    const b = blobs[i];
-    u.blobs.set([b.x, b.y, lava.radius(b) * (1 + 0.07 * bass), b.temp], i * 4);
-    u.blobsB.set([b.squash, b.spin, b.vibration, 0], i * 4);
-  }
-  u.radius = lava.baseRadius();
-
-  u.star.fill(0);
-  u.wave.fill(0);
-  cymatics.active.forEach((a, j) => {
-    const amp = cymatics.amplitude * strength * a.weight * Math.cos(a.phase);
-    if (star) {
-      u.star[j * 4] = a.mode.lobes;
-      u.star[j * 4 + 1] = STAR * amp;
-    }
-    if (faraday) {
-      u.wave[j * 4] = a.mode.directions;
-      u.wave[j * 4 + 1] = a.mode.k / (settings.wavescale / 100);
-      u.wave[j * 4 + 2] = a.mode.angle;
-      u.wave[j * 4 + 3] = FARADAY * amp * (settings.wavescale / 100) || 0;
-    }
-  });
-
-  u.ripples.fill(0);
-  ripples.forEach((r, i) => u.ripples.set([r.x, r.y, r.age, r.strength], i * 4));
-
-  const k = 1.3 + (settings.goo / 100) * 1.3;
-  u.kernel = k;
-  u.threshold = (1 - 1 / (k * k)) ** 3;
-  // Na borda de uma bolha sozinha, 1 - q = ∛limiar; c = 2/∛limiar faz o raio
-  // visível variar na fração A.
-  u.starGain = 2 / Math.cbrt(u.threshold);
-  u.pool = settings.pool ? 0.05 * (shape === 'lamp' ? 0.6 : 1) * (1 + 0.1 * bass) : 0;
-  u.lamp = shape === 'lamp';
-
-  u.colors.wax = colors.wax;
-  u.colors.hot = colors.hot;
-  u.colors.top = colors.top;
-  u.colors.bottom = colors.bottom;
-  u.colors.glow = colors.glow;
-  u.colors.metal = settings.lampmetal;
-  u.colors.backdrop = settings.backdrop;
-
-  u.glow = settings.glow / 100;
-  u.shine = settings.shine / 100;
-  u.refract = settings.refraction / 100;
-  u.bright = settings.brightness / 100;
-  u.vignette = settings.vignette / 100;
-  u.grain = settings.grain / 100;
-  u.bass = bass;
-  u.energy = Math.min(1.2, level.energy);
+  title.update(s, level.bass);
 }
 
 // ---------------------------------------------------------------- início
 
 if (params.has('demo')) {
-  startDemo(onSpectrum, onCover);
+  startDemo(onSpectrum, onCover, onSong);
 } else {
   window.wallpaperRegisterAudioListener?.(onSpectrum);
-  listenToMedia(onCover);
+  listenToMedia(onCover, onSong);
 }
 
 if (params.has('painel')) {
